@@ -386,6 +386,14 @@ IN_EN_CHARS = { c : True for c in EN_CHARS }
 VALID_CHARS = CN_CHARS + EN_CHARS + ' '
 IN_VALID_CHARS = { c : True for c in VALID_CHARS }
 
+# punctuation information are based on Zhon project (https://github.com/tsroten/zhon.git)
+CHINESE_PUNC_STOP = '！？｡。'
+CHINESE_PUNC_NON_STOP = '．＂＃＄％＆＇（）＊＋，－／：；＜＝＞＠［＼］＾＿｀｛｜｝～｟｠｢｣､、〃《》「」『』【】〔〕〖〗〘〙〚〛〜〝〞〟〰〾〿–—‘’‛“”„‟…‧﹏'
+CHINESE_PUNC_OTHER = '·〈〉-'
+CHINESE_PUNC_LIST = CHINESE_PUNC_STOP + \
+                    CHINESE_PUNC_NON_STOP + \
+                    CHINESE_PUNC_OTHER
+
 # ================================================================================ #
 #                                    basic class
 # ================================================================================ #
@@ -1063,6 +1071,16 @@ def remove_space(text):
     return ''.join(new)
 
 
+def remove_punc(text):
+    old_chars = CHINESE_PUNC_LIST + string.punctuation
+    new_chars = ' ' * len(old_chars)
+    del_chars = ''
+    text = text.translate(str.maketrans(
+        old_chars, new_chars, del_chars))
+    
+    return text
+
+
 class TextNorm:
     def __init__(self,
         to_banjiao:bool = False,
@@ -1072,6 +1090,7 @@ class TextNorm:
         remove_erhua:bool = False,
         check_chars:bool = False,
         remove_space:bool = False,
+        remove_punc:bool = False,
     ) :
         self.to_banjiao = to_banjiao
         self.to_upper = to_upper
@@ -1080,6 +1099,7 @@ class TextNorm:
         self.remove_erhua = remove_erhua
         self.check_chars = check_chars
         self.remove_space = remove_space
+        self.remove_punc = remove_punc
 
     def __call__(self, text):
         if self.to_banjiao:
@@ -1097,6 +1117,9 @@ class TextNorm:
 
         if self.remove_erhua:
             text = remove_erhua(text)
+
+        if self.remove_punc:
+            text = remove_punc(text)
 
         text = normalize_nsw(text)
 
@@ -1125,11 +1148,13 @@ if __name__ == '__main__':
     p.add_argument('--remove_erhua', action='store_true', help='remove erhua chars such as "他女儿在那边儿 -> 他女儿在那边"')
     p.add_argument('--check_chars', action='store_true' , help='skip sentences containing illegal chars')
     p.add_argument('--remove_space', action='store_true' , help='remove whitespace')
+    p.add_argument('--remove_punc', action='store_true', help='remove punctuation')
 
     # I/O options
     p.add_argument('--log_interval', type=int, default=10000, help='log interval in number of processed lines')
     p.add_argument('--has_key', action='store_true', help="will be deprecated, set --format ark instead")
-    p.add_argument('--format', type=str, choices=['txt', 'ark', 'tsv'], default='txt', help='input format')
+    p.add_argument('--format', type=str, choices=['txt', 'ark', 'tsv', 'csv'], default='txt', help='input format')
+    p.add_argument('--text_column', type=str, default='TEXT', help='csv file\'s text column')
     p.add_argument('ifile', help='input filename, assume utf-8 encoding')
     p.add_argument('ofile', help='output filename')
 
@@ -1146,6 +1171,7 @@ if __name__ == '__main__':
         remove_erhua = args.remove_erhua,
         check_chars = args.check_chars,
         remove_space = args.remove_space,
+        remove_punc = args.remove_punc,
     )
 
     ndone = 0
@@ -1164,6 +1190,24 @@ if __name__ == '__main__':
                 if text:
                     item['TEXT'] = text
                     print('\t'.join([ item[f] for f in reader.fieldnames ]), file = ostream)
+
+                ndone += 1
+                if ndone % args.log_interval == 0:
+                    print(f'text norm: {ndone} lines done.', file = sys.stderr, flush = True)
+        elif args.format == 'csv':
+            reader = csv.DictReader(istream, delimiter = ',')
+            assert(args.text_column in reader.fieldnames)
+            print(','.join(reader.fieldnames), file=ostream)
+
+            for item in reader:
+                text = item[args.text_column]
+
+                if text:
+                    text = normalizer(text)
+
+                if text:
+                    item[args.text_column] = text
+                    print(','.join([ item[f] for f in reader.fieldnames ]), file = ostream)
 
                 ndone += 1
                 if ndone % args.log_interval == 0:
