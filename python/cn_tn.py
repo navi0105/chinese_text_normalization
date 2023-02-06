@@ -12,6 +12,8 @@
 import sys, os, argparse
 import string, re
 import csv
+import pandas as pd
+from tqdm import tqdm
 
 # ================================================================================ #
 #                                    basic constant
@@ -1195,23 +1197,14 @@ if __name__ == '__main__':
                 if ndone % args.log_interval == 0:
                     print(f'text norm: {ndone} lines done.', file = sys.stderr, flush = True)
         elif args.format == 'csv':
-            reader = csv.DictReader(istream, delimiter = ',')
-            assert(args.text_column in reader.fieldnames)
-            print(','.join(reader.fieldnames), file=ostream)
-
-            for item in reader:
-                text = item[args.text_column]
-
-                if text:
-                    text = normalizer(text)
-
-                if text:
-                    item[args.text_column] = text
-                    print(','.join([ item[f] for f in reader.fieldnames ]), file = ostream)
-
+            df = pd.read_csv(istream)
+            
+            for i in tqdm(range(len(df))):
+                df.loc[i, args.text_column] = normalizer(str(df[args.text_column][i]))
                 ndone += 1
-                if ndone % args.log_interval == 0:
-                    print(f'text norm: {ndone} lines done.', file = sys.stderr, flush = True)
+
+            df.to_csv(ostream, index=False)
+            
         else:
             for l in istream:
                 key, text = '', ''
